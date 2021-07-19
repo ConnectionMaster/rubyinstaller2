@@ -1,0 +1,242 @@
+name: CI
+on:
+  push:
+  pull_request:
+  schedule:
+  - cron:  '0 3 * * *'
+
+jobs:
+  build-installer:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+        - target_ruby: "3.0.2"
+          arch: "x86-msvcrt"
+          build_ruby: "2.7.4/x64"
+          run_ruby_spec: true
+
+        - target_ruby: "3.0.2"
+          arch: "x64-msvcrt"
+          build_ruby: "2.7.4/x64"
+          run_ruby_spec: true
+
+        - target_ruby: "2.7.4"
+          arch: "x86-msvcrt"
+          build_ruby: "2.6.8/x64"
+          run_ruby_spec: true
+
+        - target_ruby: "2.7.4"
+          arch: "x64-msvcrt"
+          build_ruby: "2.6.8/x64"
+          run_ruby_spec: true
+
+        - target_ruby: "2.6.8"
+          arch: "x64-msvcrt"
+          build_ruby: "2.5.9/x64"
+          run_ruby_spec: true
+
+        - target_ruby: "2.6.8"
+          arch: "x86-msvcrt"
+          build_ruby: "2.5.9/x64"
+          run_ruby_spec: true
+
+        - target_ruby: "head"
+          arch: "x64-ucrt"
+          build_ruby: "2.6.8/x64"
+          run_mri_spec: master
+
+        - target_ruby: "head"
+          arch: "x64-msvcrt"
+          build_ruby: "2.6.8/x64"
+          run_mri_spec: master
+
+        - target_ruby: "head"
+          arch: "x86-msvcrt"
+          build_ruby: "2.6.8/x64"
+          run_mri_spec: master
+
+    runs-on: windows-latest
+    env:
+      arch: ${{ matrix.arch }}
+      target_ruby: ${{ matrix.target_ruby }}
+      run_mri_spec: ${{ matrix.run_mri_spec }}
+      run_ruby_spec: ${{ matrix.run_ruby_spec }}
+      PATH: C:/hostedtoolcache/windows/Ruby/${{ matrix.build_ruby }}/bin;c:/Program Files/Git/cmd;c:/Program Files (x86)/Inno Setup 6;c:/Windows/system32;C:/Windows/System32/WindowsPowerShell/v1.0
+
+    steps:
+    - name: configure git crlf
+      run: |
+        git config --system core.autocrlf false
+        git config --system core.eol lf
+
+    - uses: actions/checkout@v2
+
+    # Work around issue https://github.com/actions/checkout/issues/290
+    - name: fetch tag annotations
+      run: git fetch --force --tags
+
+    - run: ruby --version
+    - name: extract GIT_REF_TAG
+      shell: cmd
+      run: ruby -e 'ENV["GITHUB_REF"].sub(/refs\/tags\/(.*)/){ puts "GIT_REF_TAG="+$1 }' >>%GITHUB_ENV%
+
+    - name: show GIT_REF_TAG
+      shell: cmd
+      run: |
+        echo "%GIT_REF_TAG%"
+        git tag -l "%GIT_REF_TAG%" "--format=%%(subject)"
+        git tag -l "%GIT_REF_TAG%" "--format=%%(body)"
+
+    - name: stop build not required for release
+      shell: cmd
+      run: |
+        IF DEFINED GIT_REF_TAG (
+          echo.%GIT_REF_TAG% | findstr /C:"%target_ruby%">nul || (echo stop build not required for release & (exit 1))
+        )
+
+    - name: enable long paths on OS level
+      shell: powershell
+      # https://docs.microsoft.com/en-us/windows/win32/fileio/maximum-file-path-limitation?tabs=powershell
+      run: New-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\FileSystem" -Name "LongPathsEnabled" -Value 1 -PropertyType DWORD -Force
+
+    - name: ensure bundler is installed on the build ruby
+      run: gem install bundler --conservative --no-doc
+
+    - name: Install alternative ruby
+      if: matrix.arch == 'x64-msvcrt' || matrix.arch == 'x64-ucrt'
+      shell: powershell
+      run: |
+        $(new-object net.webclient).DownloadFile("https://github.com/oneclick/rubyinstaller2/releases/download/RubyInstaller-2.5.9-1/rubyinstaller-2.5.9-1-x86.exe", "$pwd/ruby-setup.exe")
+        cmd /c ruby-setup.exe /verysilent
+
+    - name: Install alternative ruby
+      if: matrix.arch == 'x86-msvcrt'
+      shell: powershell
+      run: |
+        $(new-object net.webclient).DownloadFile("https://github.com/oneclick/rubyinstaller2/releases/download/RubyInstaller-2.4.10-1/rubyinstaller-2.4.10-1-x64.exe", "$pwd/ruby-setup.exe")
+        cmd /c ruby-setup.exe /verysilent
+
+    - name: workaround signature issue on github actions
+      shell: cmd
+      run: C:\msys64\usr\bin\sed -i "/^SigLevel/ s/$/ DatabaseOptional/" /etc/pacman.conf
+
+    - name: Kill all running msys2 binaries to avoid error "size of shared memory region changed".
+      shell: powershell
+      # See https://github.com/msys2/MSYS2-packages/issues/258
+      run: Get-Process | Where-Object {$_.path -like 'C:\msys64*'} | Stop-Process
+
+    - name: Build the installer
+      shell: cmd
+      run: rake ri:ruby-%target_ruby%-%arch% & c:/msys64/usr/bin/gpgconf --homedir /etc/pacman.d/gnupg --kill all
+
+    - name: Reuse installed ruby for RubyInstaller-Devkit
+      shell: cmd
+      run: |
+        c:/msys64/usr/bin/mkdir -p packages/ri-msys/recipes/
+        c:/msys64/usr/bin/cp -a packages/ri/recipes/unpack packages/ri-msys/recipes/
+
+    - name: Build the RubyInstaller-Devkit installer
+      shell: cmd
+      run: rake ri-msys:ruby-%target_ruby%-%arch%:installer-inno
+
+    - name: Upload build artifacts
+      uses: actions/upload-artifact@v2
+      with:
+        name: installer packages
+        path: |
+          packages/ri/recipes/archive-7z/*.7z
+          packages/ri/recipes/installer-inno/*.exe
+          packages/ri-msys/recipes/installer-inno/*.exe
+
+    - name: Run the built Ruby installer and install to c:/ri2-ruby
+      shell: cmd
+      run: ruby -e "Dir['packages/ri-msys/recipes/installer-inno/rubyinstaller-devkit-%target_ruby%*.exe'].each{|f| system(f, '/verysilent', '/dir=c:/ri2-ruby', '/tasks=assocfiles,modpath,defaultutf8')}"
+
+    - name: Activate the environment variables set by the installer
+      # but exclude git's /usr/bin, because it conflicts with one RubyInstaller test.
+      shell: powershell
+      run: |
+        $env:PATH = [Environment]::GetEnvironmentVariable("PATH","Machine") -replace ";C:\\Program Files\\Git\\usr\\bin" -replace ";C:\\Ruby193\\bin"
+        $env:RUBYOPT = [Environment]::GetEnvironmentVariable("RUBYOPT","Machine")
+        echo "PATH=$env:PATH" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+        echo "RUBYOPT=$env:RUBYOPT" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+    - name: Verify PATH
+      shell: cmd
+      run: |
+        echo %PATH%
+        echo %RUBYOPT%
+
+    - name: ridk version
+      run: ridk version
+
+    - name: ridk install
+      run: ridk install 1 3
+
+    - name: create MSYS2 home dir for ruby-spec
+      shell: cmd
+      run: ridk exec sh -c "mkdir -pv ~"
+
+    - name: Install dependent gems
+      shell: cmd
+      run: |
+        IF "%target_ruby%" LSS "2.6" ( gem update --system && gem install bundler --force )
+        IF "%target_ruby%" GEQ "3.0" ( gem install webrick --conservative )
+
+    - name: Remove lock file because bundler version can vary between build and runtime
+      shell: cmd
+      run: del Gemfile.lock
+
+    - run: bundle install
+
+    - name: Install libstdc++ for 'rake test'
+      shell: cmd
+      run: ridk exec sh -c "pacman --noconfirm --sync --needed ${MINGW_PACKAGE_PREFIX}-gcc-libs"
+
+    - name: Run all tests against the new installed Ruby
+      shell: cmd
+      run: ridk exec rake test
+
+    - name: Run upload to github (only on tag builds)
+      shell: cmd
+      env:
+        GPGPASSWD: ${{ secrets.GPGPASSWD }}
+        DEPLOY_REPO_NAME: oneclick/rubyinstaller2
+        DEPLOY_TOKEN: ${{ secrets.DEPLOY_TOKEN }}
+      run: |
+        call ridk enable
+        set DEPLOY_TAG=%GIT_REF_TAG%
+        IF "%target_ruby%" EQU "head" (SET DEPLOY_TAG=rubyinstaller-head)
+        rake release:appveyor_upload -- packages/ri/recipes/installer-inno/%DEPLOY_TAG%*.exe packages/ri/recipes/archive-7z/%DEPLOY_TAG%*.7z packages/ri-msys/recipes/installer-inno/ruby*-%target_ruby%*.exe
+
+    - name: Run the Ruby Spec Suite
+      shell: pwsh
+      run: |
+        # Actions uses UTF8, causes test failures, similar to normal OS setup
+        $PSDefaultParameterValues['*:Encoding'] = 'utf8'
+        [Console]::OutputEncoding = [System.Text.Encoding]::GetEncoding("IBM437")
+        [Console]::InputEncoding  = [System.Text.Encoding]::GetEncoding("IBM437")
+        ridk enable
+        if (-not ([string]::IsNullOrWhiteSpace($env:run_ruby_spec))) {
+          git clone --depth 1 https://github.com/ruby/mspec &&
+          git clone --depth 1 https://github.com/ruby/spec &&
+          env --unset=RUBYOPT ruby -C spec ../mspec/bin/mspec -I../../tool/lib -j
+        }
+
+    - name: Run the MRI copy of Ruby Spec Suite
+      shell: pwsh
+      run: |
+        # Actions uses UTF8, causes test failures, similar to normal OS setup
+        $PSDefaultParameterValues['*:Encoding'] = 'utf8'
+        [Console]::OutputEncoding = [System.Text.Encoding]::GetEncoding("IBM437")
+        [Console]::InputEncoding  = [System.Text.Encoding]::GetEncoding("IBM437")
+        ridk enable
+        if (-not ([string]::IsNullOrWhiteSpace($env:run_mri_spec))) {
+          git clone --depth 1 https://github.com/ruby/ruby -b $env:run_mri_spec &&
+          env --unset=RUBYOPT ruby -C ruby/spec/ruby ../mspec/bin/mspec -I../../tool/lib -j
+        }
+
+    - name: Verify that the used CA list is still the latest.
+      shell: cmd
+      run: rake ssl:update_check || (rake ssl:update && git diff)

@@ -1,7 +1,7 @@
 # Move bundled RubyInstaller DLLs to a subdirectory.
 # This avoids interferences with other apps when ruby.exe is in the PATH.
 
-libruby_regex = /msvcrt-ruby\d+\.dll$/i
+libruby_regex = /(msvcrt|ucrt)-ruby\d+\.dll$/i
 bin_dir = File.join(sandboxdir, "bin")
 dlls_dir = File.join(sandboxdir, "bin/ruby_builtin_dlls")
 directory bin_dir
@@ -35,6 +35,11 @@ end.each do |destpath|
     image = File.binread(t.prerequisites.first)
     # The XML elements we want to add to the default MINGW manifest:
     new = <<-EOT
+      <application xmlns="urn:schemas-microsoft-com:asm.v3">
+        <windowsSettings xmlns:ws2="http://schemas.microsoft.com/SMI/2016/WindowsSettings">
+          <ws2:longPathAware>true</ws2:longPathAware>
+        </windowsSettings>
+      </application>
       <dependency>
         <dependentAssembly>
           <assemblyIdentity version="1.0.0.0" type="win32" name="ruby_builtin_dlls" />

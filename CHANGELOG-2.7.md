@@ -1,3 +1,33 @@
+## RubyInstaller-2.7.4-1 - 2020-07-09
+
+### Added
+- Enable ruby to support path length >260 characters.
+  See https://github.com/oneclick/rubyinstaller2/commit/829ab9d9798d180655b6b336797b1087bfa82f5c
+- Add `racc` to executables. #231
+
+### Changed
+- Update to ruby-2.7.4, see [release notes](https://www.ruby-lang.org/en/news/2021/07/07/ruby-2-7-4-released/).
+- Update of the SSL CA certificate list.
+- Move CI and and release builds from Appveyor to Github Actions.
+- Move RunInstaller's pacman repository from Bintray to Github Releases.
+- Update bundled gpg keyring file for pacman to support new MSYS2 package signatures.
+
+
+## RubyInstaller-2.7.3-1 - 2020-04-19
+
+### Added
+- Add more environment variables needed for configure scripts: MSYSTEM_PREFIX, MSYSTEM_CARCH, MSYSTEM_CHOST, MINGW_CHOST, MINGW_PREFIX
+
+### Changed
+- Update to ruby-2.7.3, see [release notes](https://www.ruby-lang.org/en/news/2021/04/05/ruby-2-7-3-released/).
+- Update to OpenSSL-1.1.1k .
+- Update of the SSL CA certificate list.
+- ridk version: Avoid possible crash due to invalid encoding. #208
+- Install pkgconf instead of pkg-config on x86_64 following the change of MSYS2.
+- Avoid creation of .irbrc if directory isn't writeable. #212
+- Update the pacman repos in part 2 in addition to part 1. #220
+
+
 ## RubyInstaller-2.7.2-1 - 2020-10-06
 
 ### Added

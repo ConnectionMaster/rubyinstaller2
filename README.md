@@ -76,13 +76,13 @@ Also refer the [FAQ](https://github.com/larskanis/rubyinstaller2/wiki/FAQ) for a
 This repository provides the packaging tasks to build RubyInstaller setup executables and 7zip files.
 It doesn't compile any sources, but makes use of the [MSYS2-MINGW repository](https://github.com/Alexpux/MINGW-packages) and the [RubyInstaller2 pacman repository](https://github.com/oneclick/rubyinstaller2-packages) to download binaries and dependent libraries.
 
-### Automatic build on Appveyor
+### Automatic build on Github Actions
 
-The installer is regularly built on [AppVeyor](https://ci.appveyor.com/project/larskanis/rubyinstaller2-hbuor) for each push to the github repository.
-AppVeyor also executes the installer and runs all tests on it, so that we are notified about breaking changes.
+The installer is regularly built on [Github Actions](https://github.com/oneclick/rubyinstaller2/actions) for each push to the github repository.
+The runner also executes the installer and runs all RubyInstaller tests and [ruby-spec](https://github.com/ruby/spec) on it, so that we are notified about breaking changes.
 In addition to this, a daily build of the latest ruby development snapshot is compiled and packaged as RubyInstaller files.
-It can be downloaded from [github releases](https://github.com/oneclick/rubyinstaller2/releases/tag/rubyinstaller-head) or from [AppVeyor](https://ci.appveyor.com/project/larskanis/rubyinstaller2-hbuor) as build artifacts.
-Check the wiki on how to use [ruby-head versions on Appveyor](https://github.com/oneclick/rubyinstaller2/wiki/For-gem-developers#user-content-appveyor) for your CI builds.
+It can be downloaded from [github releases](https://github.com/oneclick/rubyinstaller2/releases/tag/rubyinstaller-head).
+Check the [wiki on how to use](https://github.com/oneclick/rubyinstaller2/wiki/For-gem-developers#user-content-appveyor) ruby-head versions for your CI builds.
 
 
 ### Build RubyInstaller2 on your own machine:
@@ -92,23 +92,37 @@ Check the wiki on how to use [ruby-head versions on Appveyor](https://github.com
 - Install the latest Inno-Setup (unicode) from http://www.jrsoftware.org/isdl.php
 - Run **cmd.exe** and add **iscc.exe** to PATH:
   ```sh
-    set PATH=%PATH%;"c:\Program Files (x86)\Inno Setup 5"
+    set PATH=%PATH%;"c:\Program Files (x86)\Inno Setup 6"
   ```
-- Clone RubyInstaller2 and build all RubyInstaller versions for x86 and x64:
+- Clone RubyInstaller2 and install dependencies:
   ```sh
     git clone https://github.com/larskanis/rubyinstaller2
     cd rubyinstaller2
     bundle install
-    bundle exec rake
+    rake -T
   ```
-- If everything works well, you will find the final setup and archive files: 
-  * `packages/rubyinstaller/recipes/installer-inno/rubyinstaller-<VERSION>-<ARCH>.exe`
-  * `packages/rubyinstaller/recipes/archive-7z/rubyinstaller-<VERSION>-<ARCH>.7z`
-- Also try `rake -T` to see the available build targets.
+- The last command lists all available RubyInstaller build targets.
+  The build targets consists of the following parts:
+  ```
+    rake ri:ruby-3.0.2-x86-msvcrt:archive-7z
+          ^      ^      ^    ^        ^- "archive-7z"     => 7z archive of the rubyinstaller files
+          |      |      |    |           "installer-inno" => executable installer file
+          |      |      |    '------- "msvcrt" => older type of C standard library
+          |      |      |             "ucrt"   => new type of C standard library
+          |      |      '------- "x86" => 32 bit ruby and MSYS2 version
+          |      |               "x64" => 64 bit version
+          |      '------ "x.x.x" => ruby version to build
+          |              "head"  => latest development snapshot of ruby
+          '------ "ri"      => RubyInstaller without Devkit
+                  "ri-msys" => RubyInstaller with MSYS2 based Devkit
+  ```
+- Copy and paste the interesting one on the command line.
+- If everything works well, you will find the final setup and archive files like so: 
+  * `packages/ri-msys/recipes/installer-inno/rubyinstaller-devkit-<VERSION>-<ARCH>.exe`
+  * `packages/ri/recipes/archive-7z/rubyinstaller-<VERSION>-<ARCH>.7z`
 
 
 ## Known Issues
 
 - It's best to avoid installation into a PATH containing spaces. Some gems won't install.
-- Ruby on Windows is still using non UTF-8 default external encoding: Raised [as ruby bug](https://bugs.ruby-lang.org/issues/13488).
 - Also refer to [the issue list](https://github.com/larskanis/rubyinstaller2/issues).
