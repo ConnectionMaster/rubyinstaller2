@@ -97,7 +97,7 @@ class Release
       release = client.update_release(release.url, name: headline, body: body)
     else
       release = client.create_release(repo, tag,
-          target_commitish: tag,
+          tag_name: tag,
           name: headline,
           body: body,
           draft: true,
